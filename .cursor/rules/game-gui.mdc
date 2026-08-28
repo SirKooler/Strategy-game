@@ -1,0 +1,11 @@
+---
+description: UI rules. Visual theme is not chosen yet; use placeholders.
+alwaysApply: true
+---
+
+# GUI
+
+- No visual theme yet. Use placeholder UI (simple Unity UI / temp labels).
+- Do not generate a finished art style, icon set, or branded HUD.
+- Keep screens readable and functional. Competitive info (trophies, match status) should be obvious.
+- Do not add shop/IAP UI.
