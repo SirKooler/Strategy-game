@@ -1,0 +1,12 @@
+---
+description: Repo and Unity project conventions for this strategy game.
+alwaysApply: true
+---
+
+# Project
+
+- Unity 6 (`6000.5.9f1`). Scripts currently live under `Assets/Script/`.
+- The project is early. Prefer small, explicit changes over new frameworks, packages, or folder trees.
+- Do not add store, IAP, ads, or paid-advantage systems.
+- Do not generate final art, audio, or a visual theme. Placeholders only until the user chooses one.
+- Match existing naming and layout instead of renaming the project to a “standard” Unity template.

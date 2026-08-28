@@ -1,0 +1,11 @@
+---
+description: Unit roster and faction rules. Nothing in the roster is locked yet.
+alwaysApply: true
+---
+
+# Roster
+
+- No factions, units, or loadouts are locked.
+- Do not invent a default roster, civ tree, or hero list and treat it as canon.
+- If a task needs a unit, ask or use a clearly labeled placeholder.
+- When the user does define a unit, keep it data-driven and consistent with existing definitions.

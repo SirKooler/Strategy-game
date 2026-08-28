@@ -1,0 +1,12 @@
+---
+description: Gameplay and competitive rules for this online strategy game.
+alwaysApply: true
+---
+
+# Game rules
+
+- Online multiplayer. Matchmaking uses trophies.
+- Competitive outcomes must be fair: no real-money power, boosts, or paywalled units that win games.
+- Prefer server-authoritative or otherwise hard-to-cheat designs for combat, resources, and match results.
+- Keep the experience suitable for 12+.
+- Do not invent core mechanics (win conditions, resources, combat math) as if they were already decided. Propose options and wait for the user.
