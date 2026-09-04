@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Project
 
-- Unity 6 (`6000.5.9f1`). Scripts currently live under `Assets/Script/`.
+- Unity 6 (`6000.5.9f1`). Gameplay is grouped by domain at `Assets/` (`Board`, `Characters`, `Control`, `Hud`, `Player`, `Utils`). Editor tools stay in `Assets/Editor/`.
 - The project is early. Prefer small, explicit changes over new frameworks, packages, or folder trees.
 - Do not add store, IAP, ads, or paid-advantage systems.
 - Do not generate final art, audio, or a visual theme. Placeholders only until the user chooses one.

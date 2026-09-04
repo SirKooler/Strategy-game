@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Unity C#
 
-- Follow patterns already in `Assets/Script/` rather than introducing a new architecture.
+- Follow patterns already in the domain folders under `Assets/` rather than introducing a new architecture.
 - Use Unity 6 / standard `MonoBehaviour` style unless the user asks for something else.
 - Keep scripts small and named for what they do. Do not rename files just to match a style guide.
 - No paid-power, cheat, or debug-win shortcuts in shipping gameplay code.
