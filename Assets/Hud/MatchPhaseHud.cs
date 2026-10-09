@@ -1,157 +1,153 @@
 using System;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Match phase, turn, and ready/next-turn controls.
-/// Energy lives on the scene <see cref="EnergyHud"/> object.
+/// Ready control. Energy lives on the scene <see cref="EnergyHud"/> object.
 /// </summary>
 public class MatchPhaseHud : MonoBehaviour
 {
     public Action OnReady;
-    public Action OnNextTurn;
+    public Action OnHome;
+
+    static readonly Color ReadyColor = new Color(0.22f, 0.62f, 0.38f, 1f);
+    static readonly Color WaitingColor = new Color(0.62f, 0.52f, 0.18f, 1f);
 
     [SerializeField] RectTransform panel;
-    [SerializeField] Image banner;
-    [SerializeField] Text phaseTitle;
-    [SerializeField] Text phaseSubtitle;
-    [SerializeField] Text matchInfo;
-    [SerializeField] Text turnHelp;
-    [SerializeField] Text unitList;
     [SerializeField] EnergyHud energyHud;
     [SerializeField] Button readyButton;
-    [SerializeField] Button nextTurnButton;
+    [SerializeField] Text resultLabel;
+    [SerializeField] Button homeButton;
+
+    Image _readyImage;
+    Text _readyLabel;
 
     void Awake()
     {
-        readyButton.onClick.AddListener(() => OnReady?.Invoke());
-        nextTurnButton.onClick.AddListener(() => OnNextTurn?.Invoke());
+        if (readyButton != null)
+        {
+            readyButton.onClick.AddListener(() => OnReady?.Invoke());
+            _readyImage = readyButton.GetComponent<Image>();
+            _readyLabel = readyButton.GetComponentInChildren<Text>();
+        }
+        EnsureResultLabel();
+        EnsureHomeButton();
+    }
+
+    void EnsureResultLabel()
+    {
+        if (resultLabel != null || panel == null)
+            return;
+
+        Transform existing = panel.Find("ResultLabel");
+        if (existing != null)
+        {
+            resultLabel = existing.GetComponent<Text>();
+            if (resultLabel != null)
+                return;
+        }
+
+        var go = new GameObject("ResultLabel", typeof(RectTransform), typeof(Text), typeof(LayoutElement));
+        go.layer = 5;
+        go.transform.SetParent(panel, false);
+        resultLabel = go.GetComponent<Text>();
+        resultLabel.font = _readyLabel != null
+            ? _readyLabel.font
+            : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        resultLabel.alignment = TextAnchor.MiddleCenter;
+        resultLabel.color = Color.white;
+        resultLabel.horizontalOverflow = HorizontalWrapMode.Overflow;
+        resultLabel.resizeTextForBestFit = true;
+        resultLabel.resizeTextMinSize = 10;
+        resultLabel.resizeTextMaxSize = 24;
+        go.GetComponent<LayoutElement>().preferredHeight = 36f;
+        go.SetActive(false);
+    }
+
+    void EnsureHomeButton()
+    {
+        if (homeButton == null && panel != null)
+        {
+            Transform existing = panel.Find("HomeButton");
+            if (existing != null)
+                homeButton = existing.GetComponent<Button>();
+        }
+
+        if (homeButton == null && panel != null)
+        {
+            var go = new GameObject("HomeButton", typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+            go.layer = 5;
+            go.transform.SetParent(panel, false);
+            Image image = go.GetComponent<Image>();
+            image.color = new Color(0.25f, 0.45f, 0.75f, 1f);
+            homeButton = go.GetComponent<Button>();
+            homeButton.targetGraphic = image;
+            go.GetComponent<LayoutElement>().preferredHeight = 36f;
+
+            var textGo = new GameObject("Text", typeof(RectTransform), typeof(Text));
+            textGo.layer = 5;
+            textGo.transform.SetParent(go.transform, false);
+            RectTransform textRect = textGo.GetComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.offsetMin = Vector2.zero;
+            textRect.offsetMax = Vector2.zero;
+            Text text = textGo.GetComponent<Text>();
+            text.font = _readyLabel != null
+                ? _readyLabel.font
+                : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.text = "Home";
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.white;
+        }
+
+        if (homeButton == null)
+            return;
+
+        homeButton.onClick.AddListener(() => OnHome?.Invoke());
+        homeButton.gameObject.SetActive(false);
     }
 
     public bool ContainsScreenPoint(Vector2 screenPosition)
     {
-        if (panel == null || !panel.gameObject.activeInHierarchy)
-            return energyHud != null && HudHit.Contains(energyHud.Rect, screenPosition);
-        return HudHit.Contains(panel, screenPosition)
-            || (energyHud != null && HudHit.Contains(energyHud.Rect, screenPosition));
+        bool showingResult = resultLabel != null && resultLabel.gameObject.activeInHierarchy
+            || homeButton != null && homeButton.gameObject.activeInHierarchy;
+        bool onPanel = showingResult && panel != null && HudHit.Contains(panel, screenPosition);
+        bool onEnergy = energyHud != null && HudHit.Contains(energyHud.Rect, screenPosition);
+        bool onReady = readyButton != null && HudHit.Contains(readyButton.transform as RectTransform, screenPosition);
+        return onPanel || onEnergy || onReady;
     }
 
     public void Refresh(MatchStatus status)
     {
         bool plan = status.Phase == MatchPhase.Plan;
-
-        banner.color = plan
-            ? new Color(0.55f, 0.7f, 1f, 0.7f)
-            : new Color(1f, 0.55f, 0.5f, 0.7f);
-
-        phaseTitle.text = plan ? "PLAN PHASE" : "BATTLE PHASE";
-        phaseSubtitle.text = plan ? "Set orders. Units do not move yet." : "Orders have been resolved.";
-        matchInfo.text = "MATCH  |  1 player  |  no win conditions  |  trophies: n/a";
-        turnHelp.text = $"Turn {status.Turn}  |  {HelpText(status.Phase)}";
+        bool won = status.Winner != MatchWinner.None;
         if (energyHud != null)
             energyHud.SetEnergy(status.EnergyRemaining);
-        unitList.text = BuildUnitList(status);
-        readyButton.gameObject.SetActive(plan);
-        nextTurnButton.gameObject.SetActive(!plan);
-    }
-
-    static string HelpText(MatchPhase phase)
-    {
-        return phase == MatchPhase.Battle
-            ? "Review the result, then Next Turn"
-            : "Click a character, then choose an action. Press Ready to start battle";
-    }
-
-    static string BuildUnitList(MatchStatus status)
-    {
-        string localName = string.IsNullOrWhiteSpace(status.PlayerName) ? "You" : status.PlayerName;
-        var lines = new List<string>();
-        for (int i = 0; i < status.Units.Count; i++)
+        if (resultLabel != null)
         {
-            Unit unit = status.Units[i];
-            UnitStats stats = unit.behaviour.CurrentStats;
-            bool playerOwned = status.PlayerUnits.Contains(unit);
-            string owner = playerOwned ? localName : "Dummy";
-            string order = playerOwned ? PlanLabel(status, unit) : "no turn";
-            string marker = unit == status.Selected ? "> " : "  ";
-            lines.Add($"{marker}{stats.displayName} ({owner})  HP {stats.health}/{stats.maxHealth}  {order}");
+            resultLabel.gameObject.SetActive(won);
+            if (won)
+                resultLabel.text = status.Winner == MatchWinner.Local ? "You win" : "Opponent wins";
         }
-
-        return string.Join("\n", lines);
-    }
-
-    static string PlanLabel(MatchStatus status, Unit unit)
-    {
-        PlannedAction plan = unit.behaviour.Plan;
-        if (plan == null)
-            return "no order";
-        switch (plan.Type)
+        if (readyButton != null)
         {
-            case PlannedActionType.Move:
-                return plan.TargetPositions != null && plan.TargetPositions.Count == 1
-                    ? $"MOVE to {plan.GetSoleTarget()}"
-                    : "MOVE";
-            case PlannedActionType.Attack:
-                return AttackLabel(status, plan);
-            case PlannedActionType.Utility:
-                return UtilityLabel(status, plan);
-            default:
-                return "no order";
+            readyButton.gameObject.SetActive(plan && !won);
+            if (_readyLabel != null)
+            {
+                _readyLabel.text = status.IsWaitingForOpponent ? "Waiting" : "Ready";
+                _readyLabel.horizontalOverflow = HorizontalWrapMode.Overflow;
+            }
+            if (_readyImage != null)
+                _readyImage.color = status.IsWaitingForOpponent ? WaitingColor : ReadyColor;
         }
-    }
-
-    static string AttackLabel(MatchStatus status, PlannedAction plan)
-    {
-        if (plan.TargetPositions == null || plan.TargetPositions.Count == 0)
-            return "ATTACK";
-
-        var names = new List<string>();
-        foreach (Position cell in plan.TargetPositions)
+        if (homeButton != null)
+            homeButton.gameObject.SetActive(won);
+        Image panelImage = panel != null ? panel.GetComponent<Image>() : null;
+        if (panelImage != null)
         {
-            Unit target = UnitAt(status.Units, cell);
-            if (target == null)
-                continue;
-            string name = target.behaviour.CurrentStats.displayName;
-            if (!names.Contains(name))
-                names.Add(name);
+            panelImage.enabled = won;
+            panelImage.raycastTarget = won;
         }
-
-        if (names.Count > 0)
-            return "ATTACK " + string.Join(", ", names);
-        return $"ATTACK {plan.TargetPositions.Count} tiles";
-    }
-
-    static string UtilityLabel(MatchStatus status, PlannedAction plan)
-    {
-        if (plan.TargetPositions == null || plan.TargetPositions.Count == 0)
-            return "HEAL";
-
-        var names = new List<string>();
-        foreach (Position cell in plan.TargetPositions)
-        {
-            Unit target = UnitAt(status.Units, cell);
-            if (target == null || status.PlayerUnits == null || !status.PlayerUnits.Contains(target))
-                continue;
-            string name = target.behaviour.CurrentStats.displayName;
-            if (!names.Contains(name))
-                names.Add(name);
-        }
-
-        if (names.Count > 0)
-            return "HEAL " + string.Join(", ", names);
-        return $"HEAL {plan.TargetPositions.Count} tiles";
-    }
-
-    static Unit UnitAt(IReadOnlyList<Unit> units, Position position)
-    {
-        for (int i = 0; i < units.Count; i++)
-        {
-            Unit unit = units[i];
-            if (unit.behaviour.Position.SameCell(position))
-                return unit;
-        }
-
-        return null;
     }
 }

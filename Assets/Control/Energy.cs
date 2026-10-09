@@ -1,7 +1,7 @@
 /// <summary>
 /// Player energy for the current plan phase. Pool is fresh each turn and does not carry over.
 /// Turn 1 grants 2; each later turn grants 1 more.
-/// Extra characters cost 1, then 2, 4, 6; after that spawning is locked.
+/// Extra characters cost 1, then 2, 4, 7, 8, 9, 10, 10; after that spawning is locked.
 /// </summary>
 public static class Energy
 {
@@ -12,7 +12,7 @@ public static class Energy
     /// <summary>Sentinel for a locked spawn. Not a payable amount.</summary>
     public const int InfiniteSpawnCost = -1;
 
-    static readonly int[] SpawnCosts = { 1, 2, 4, 6 };
+    static readonly int[] SpawnCosts = { 1, 2, 4, 7, 8, 9, 10, 10 };
 
     public static int PoolForTurn(int turn)
     {

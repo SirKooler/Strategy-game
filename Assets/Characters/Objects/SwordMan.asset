@@ -13,7 +13,3 @@ MonoBehaviour:
   m_Name: SwordMan
   m_EditorClassIdentifier: 
   displayName: SwordMan
-  maxHealth: 20
-  health: 20
-  damage: 10
-  placeholderColor: {r: 0.56, g: 0.12, b: 0.52, a: 1}

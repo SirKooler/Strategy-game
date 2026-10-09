@@ -13,7 +13,3 @@ MonoBehaviour:
   m_Name: Octopus
   m_EditorClassIdentifier: 
   displayName: Octopus
-  maxHealth: 16
-  health: 16
-  damage: 5
-  placeholderColor: {r: 0.56, g: 0.62, b: 0.32, a: 1}

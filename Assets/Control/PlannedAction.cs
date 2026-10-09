@@ -21,6 +21,7 @@ public class PlannedAction
     public PlannedActionType Type;
     public HashSet<Position> TargetPositions;
     public Unit Character;
+    public byte AbilityIdentifier;
 
     /// <summary>
     /// Returns the sole target position if the plan targets exactly one cell (a move destination).

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -18,6 +19,38 @@ public enum UnitPlanKind
 /// </summary>
 public class UnitBehaviour : MonoBehaviour
 {
+    /// <summary>
+    /// Sheet text for one character. Unspawn and Clear have no text of their own.
+    /// An empty move uses the action menu's default. An empty attack or utility uses <see cref="description"/>.
+    /// <see cref="ApplyStats"/> replaces &lt;health&gt;, &lt;maxHealth&gt;, and &lt;damage&gt;.
+    /// </summary>
+    [Serializable]
+    public class Descriptions
+    {
+        /// <summary>Fills stat tags in <paramref name="text"/> from <paramref name="stats"/>.</summary>
+        public static string ApplyStats(string text, UnitStats stats)
+        {
+            if (string.IsNullOrEmpty(text) || stats == null)
+                return text;
+            return text
+                .Replace("<maxHealth>", stats.maxHealth.ToString())
+                .Replace("<health>", stats.health.ToString())
+                .Replace("<damage>", stats.damage.ToString());
+        }
+
+        [TextArea]
+        public string description;
+
+        [TextArea]
+        public string move;
+
+        [TextArea]
+        public string attack;
+
+        [TextArea]
+        public string utility;
+    }
+
     UnitStats _stats;
     UnitStats _sourceDefinition;
     Position _position;
@@ -26,6 +59,7 @@ public class UnitBehaviour : MonoBehaviour
     bool _hasEnteredBattle;
     bool _hasResolved;
 
+    public Descriptions Text { get; private set; }
     public UnitStats CurrentStats => _stats;
     public UnitStats SourceDefinition => _sourceDefinition;
     public Position Position => _position;
@@ -35,6 +69,10 @@ public class UnitBehaviour : MonoBehaviour
     public bool IsOpeningSpawn => _isOpeningSpawn;
     public bool HasEnteredBattle => _hasEnteredBattle;
     public bool HasResolved => _hasResolved;
+    public string ServerUnitId;
+
+    /// <summary>Player id that owns this unit. Flags copy it when this unit captures them.</summary>
+    public string OwnerId;
 
     public bool IsAlive => _stats != null && _stats.health > 0;
 
@@ -127,15 +165,22 @@ public class UnitBehaviour : MonoBehaviour
     }
 
     /// <summary>
-    /// Copies <paramref name="definition"/> onto this behaviour, then applies
-    /// <see cref="UnitConstants"/> when the unit is a known placeholder.
+    /// Keeps <paramref name="definition"/> as the deck source.
+    /// A playable type gets its own stats from <see cref="UnitConstants"/>, not from the asset numbers.
     /// Call once after the component is added. Art is applied by <see cref="Unit"/>.
     /// </summary>
     public void Setup(UnitStats definition, Position position)
     {
         _sourceDefinition = definition;
-        _stats = Instantiate(definition);
-        UnitConstants.ApplyIfKnown(_stats);
+        if (UnitConstants.TryCreate(definition, out UnitStats typed))
+            _stats = typed;
+        else
+        {
+            _stats = Instantiate(definition);
+            _stats.health = _stats.maxHealth;
+        }
+
+        CopyDescriptions(definition);
         _position = position.Copy();
         _isOpeningSpawn = false;
         _hasEnteredBattle = false;
@@ -144,9 +189,40 @@ public class UnitBehaviour : MonoBehaviour
         name = _stats.displayName;
     }
 
+    /// <summary>
+    /// Playable numbers come from <see cref="UnitConstants"/>. Description text stays on the deck asset.
+    /// </summary>
+    void CopyDescriptions(UnitStats from)
+    {
+        Descriptions source = from != null ? from.descriptions : null;
+        Text = new Descriptions
+        {
+            description = source != null ? source.description : null,
+            move = source != null ? source.move : null,
+            attack = source != null ? source.attack : null,
+            utility = source != null ? source.utility : null
+        };
+    }
+
+    /// <summary>Health and damage from the match server. Patterns stay on the character type.</summary>
+    public void ApplyServerStats(int health, int maxHealth, int damage)
+    {
+        if (_stats == null)
+            return;
+        _stats.health = health;
+        _stats.maxHealth = maxHealth;
+        _stats.damage = damage;
+        NotifyHealthChanged();
+    }
+
     public void MarkOpeningSpawn()
     {
         _isOpeningSpawn = true;
+    }
+
+    public void SetEnteredBattle(bool entered)
+    {
+        _hasEnteredBattle = entered;
     }
 
     public void ClearResolved()
@@ -197,22 +273,23 @@ public class UnitBehaviour : MonoBehaviour
             _plan.TargetPositions.Add(destination.Copy());
     }
 
-    public void SetAttackPlan(IReadOnlyList<Position> cells)
+    public void SetAttackPlan(IReadOnlyList<Position> cells, byte abilityId = 0)
     {
-        SetAbilityPlan(PlannedActionType.Attack, cells);
+        SetAbilityPlan(PlannedActionType.Attack, cells, abilityId);
     }
 
-    public void SetUtilityPlan(IReadOnlyList<Position> cells)
+    public void SetUtilityPlan(IReadOnlyList<Position> cells, byte abilityId = 0)
     {
-        SetAbilityPlan(PlannedActionType.Utility, cells);
+        SetAbilityPlan(PlannedActionType.Utility, cells, abilityId);
     }
 
-    void SetAbilityPlan(PlannedActionType type, IReadOnlyList<Position> cells)
+    void SetAbilityPlan(PlannedActionType type, IReadOnlyList<Position> cells, byte abilityId)
     {
         _plan = new PlannedAction
         {
             Type = type,
-            TargetPositions = new HashSet<Position>()
+            TargetPositions = new HashSet<Position>(),
+            AbilityIdentifier = abilityId
         };
         if (cells == null)
             return;
@@ -228,11 +305,29 @@ public class UnitBehaviour : MonoBehaviour
         _plan = null;
     }
 
+    /// <summary>Puts back a plan captured before the current action view.</summary>
+    public void RestorePlan(PlannedAction plan)
+    {
+        _plan = plan;
+    }
+
     public void ApplyDamage(int amount)
     {
         _stats.health -= amount;
         if (_stats.health < 0)
             _stats.health = 0;
+        NotifyHealthChanged();
+    }
+
+    /// <summary>Removes health, but never below <paramref name="minimum"/>.</summary>
+    public void ApplyDamageDownTo(int amount, int minimum)
+    {
+        if (_stats == null || amount <= 0)
+            return;
+        _stats.health -= amount;
+        if (_stats.health < minimum)
+            _stats.health = minimum;
+        NotifyHealthChanged();
     }
 
     public void ApplyHeal(int amount)
@@ -242,5 +337,13 @@ public class UnitBehaviour : MonoBehaviour
         _stats.health += amount;
         if (_stats.health > _stats.maxHealth)
             _stats.health = _stats.maxHealth;
+        NotifyHealthChanged();
+    }
+
+    void NotifyHealthChanged()
+    {
+        Unit unit = GetComponent<Unit>();
+        if (unit != null)
+            unit.RefreshHealth();
     }
 }

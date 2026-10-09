@@ -10,7 +10,7 @@ public class MatchSpawner
     readonly PlaceholderBoard _board;
     readonly Transform _unitParent;
     readonly Player _player;
-    Sprite _unitSprite;
+    HealthBar _healthBarPrefab;
 
     public MatchSpawner(MatchRuntime runtime, PlaceholderBoard board, Transform unitParent, Player player)
     {
@@ -20,9 +20,9 @@ public class MatchSpawner
         _player = player;
     }
 
-    public void SetUnitSprite(Sprite sprite)
+    public void SetHealthBar(HealthBar prefab)
     {
-        _unitSprite = sprite;
+        _healthBarPrefab = prefab;
     }
 
     public bool CanSpawnNow()
@@ -32,12 +32,13 @@ public class MatchSpawner
             && HasEmptyBottomCell();
     }
 
+    public bool CanSpawnDefinition(UnitStats definition)
+    {
+        return CanSpawnNow() && _runtime.IsDefinitionAvailable(definition);
+    }
+
     public bool TrySpawnFromDeck(bool asOpening = false)
     {
-        int cost = _runtime.NextSpawnCost;
-        if (!_runtime.CanAffordSpawn)
-            return false;
-
         UnitStats definition = PickRandomUnspawnedFromDeck();
         if (definition == null)
         {
@@ -45,11 +46,30 @@ public class MatchSpawner
             return false;
         }
 
-        if (!TryPickRandomEmptyBottomCell(out Position start))
+        if (!TryPickOpeningBottomCell(out Position start))
         {
-            Debug.LogWarning("No empty bottom-row tile to spawn on.");
+            Debug.LogWarning("No empty middle bottom-row tile to spawn on.");
             return false;
         }
+
+        return FinishSpawnFromDeck(definition, start, asOpening);
+    }
+
+    public bool TrySpawnFromDeck(UnitStats definition, Position cell)
+    {
+        if (!CanSpawnDefinition(definition))
+            return false;
+        if (cell == null || cell.Row != _runtime.HomeRow || !CanSpawnOn(_board.GetCell(cell)))
+            return false;
+
+        return FinishSpawnFromDeck(definition, cell, false);
+    }
+
+    bool FinishSpawnFromDeck(UnitStats definition, Position start, bool asOpening)
+    {
+        int cost = _runtime.NextSpawnCost;
+        if (!_runtime.CanAffordSpawn)
+            return false;
 
         if (!TrySpawn(definition, true, start, asOpening))
             return false;
@@ -60,6 +80,7 @@ public class MatchSpawner
             _runtime.SpawnEnergySpent += cost;
         }
 
+        _runtime.ClearPendingSpawn();
         return true;
     }
 
@@ -89,6 +110,8 @@ public class MatchSpawner
         UnitStats source = unit.behaviour.SourceDefinition;
         if (source != null)
             _runtime.SpawnedDefinitions.Remove(source);
+
+        _runtime.ClearPendingSpawn();
 
         BoardCell cell = _board.GetCell(unit.behaviour.Position);
         if (cell != null && cell.Occupant == unit)
@@ -135,15 +158,14 @@ public class MatchSpawner
         string unitName = string.IsNullOrEmpty(definition.displayName) ? "Unit" : definition.displayName;
         var go = new GameObject(unitName);
         go.transform.SetParent(_unitParent, false);
-        float size = _board.CellSize;
-        go.transform.localScale = new Vector3(size, size, 1f);
 
         var unit = go.AddComponent<Unit>();
         unit.behaviour = go.AddComponent<UnitBehaviour>();
         unit.behaviour.Setup(definition, start);
+        unit.behaviour.OwnerId = playerControlled ? _runtime.LocalPlayerId : _runtime.OpponentPlayerId;
         if (asOpening)
             unit.behaviour.MarkOpeningSpawn();
-        unit.Setup(unit.behaviour, _unitSprite);
+        unit.Setup(unit.behaviour, _board.CellSize, playerControlled, _healthBarPrefab);
         unit.PlaceAt(start, cell.transform.position);
         cell.Occupant = unit;
         if (playerControlled)
@@ -186,36 +208,47 @@ public class MatchSpawner
         return null;
     }
 
-    bool TryPickRandomEmptyBottomCell(out Position start)
+    bool TryPickOpeningBottomCell(out Position start)
     {
         start = null;
-        int empty = 0;
-        for (int column = 0; column < _board.Columns; column++)
-        {
-            BoardCell cell = _board.GetCell(column, 0);
-            if (cell != null && cell.Occupant == null)
-                empty++;
-        }
-
-        if (empty == 0)
+        int columns = _board.Columns;
+        if (columns <= 0)
             return false;
 
-        int pick = Random.Range(0, empty);
-        for (int column = 0; column < _board.Columns; column++)
-        {
-            BoardCell cell = _board.GetCell(column, 0);
-            if (cell == null || cell.Occupant != null)
-                continue;
-            if (pick == 0)
-            {
-                start = cell.Position;
-                return true;
-            }
+        if ((columns & 1) == 1)
+            return TryUseEmptyBottomCell(columns / 2, out start);
 
-            pick--;
-        }
-
+        int left = columns / 2 - 1;
+        int right = columns / 2;
+        bool leftOpen = IsEmptyBottomCell(left);
+        bool rightOpen = IsEmptyBottomCell(right);
+        if (leftOpen && rightOpen)
+            return TryUseEmptyBottomCell(Random.Range(0, 2) == 0 ? left : right, out start);
+        if (leftOpen)
+            return TryUseEmptyBottomCell(left, out start);
+        if (rightOpen)
+            return TryUseEmptyBottomCell(right, out start);
         return false;
+    }
+
+    bool TryUseEmptyBottomCell(int column, out Position start)
+    {
+        start = null;
+        BoardCell cell = _board.GetCell(column, _runtime.HomeRow);
+        if (!CanSpawnOn(cell))
+            return false;
+        start = cell.Position;
+        return true;
+    }
+
+    bool IsEmptyBottomCell(int column)
+    {
+        return CanSpawnOn(_board.GetCell(column, _runtime.HomeRow));
+    }
+
+    static bool CanSpawnOn(BoardCell cell)
+    {
+        return cell != null && cell.Occupant == null && !cell.HasFlag;
     }
 
     bool HasUnspawnedDeckUnit()
@@ -236,8 +269,7 @@ public class MatchSpawner
     {
         for (int column = 0; column < _board.Columns; column++)
         {
-            BoardCell cell = _board.GetCell(column, 0);
-            if (cell != null && cell.Occupant == null)
+            if (CanSpawnOn(_board.GetCell(column, _runtime.HomeRow)))
                 return true;
         }
 

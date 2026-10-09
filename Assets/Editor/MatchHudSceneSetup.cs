@@ -12,9 +12,13 @@ using UnityEngine.UI;
 public static class MatchHudSceneSetup
 {
     const string CanvasName = "Canvas";
-    const string PhasePanelName = "PhasePanel";
+    const string TurnBarName = "TurnBar";
+    const string LegacyPhasePanelName = "PhasePanel";
     const string ActionMenuName = "ActionMenu";
     const string TopHudName = "TopHud";
+    const string CharacterMenuName = "CharacterMenu";
+    const string DeckButtonName = "DeckButton";
+    const string MatchViewName = "MatchView";
 
     [MenuItem("Strategy/Create Match HUD In Scene")]
     public static void CreateFromMenu()
@@ -31,13 +35,17 @@ public static class MatchHudSceneSetup
                 return;
             if (Object.FindAnyObjectByType<MatchController>() == null)
                 return;
-            if (Object.FindAnyObjectByType<Canvas>() is Canvas canvas && canvas.transform.Find(PhasePanelName) != null)
+            if (Object.FindAnyObjectByType<Canvas>() is Canvas canvas && FindTurnBar(canvas.transform) != null)
             {
+                EnsureSlimTurnBar(canvas);
                 EnsureTopHud(canvas);
                 EnsureEnergyHud(canvas);
+                EnsureCharacterMenu(canvas);
                 EnsureUtilityButton();
                 EnsureUnspawnButton();
+                EnsureCharacterInspect();
                 EnsureLayoutOn(canvas.gameObject);
+                EnsureMatchView();
                 ColorHudButtons();
                 return;
             }
@@ -50,7 +58,7 @@ public static class MatchHudSceneSetup
         if (!force)
         {
             Canvas existing = Object.FindAnyObjectByType<Canvas>();
-            if (existing != null && existing.transform.Find(PhasePanelName) != null)
+            if (existing != null && FindTurnBar(existing.transform) != null)
                 return;
         }
 
@@ -66,27 +74,33 @@ public static class MatchHudSceneSetup
         MatchPhaseHud oldPhase = Object.FindAnyObjectByType<MatchPhaseHud>();
         UnitActionMenu oldAction = Object.FindAnyObjectByType<UnitActionMenu>();
 
-        Transform oldPhasePanel = canvasGo.transform.Find(PhasePanelName);
+        Transform oldTurnBar = canvasGo.transform.Find(TurnBarName);
+        Transform oldPhasePanel = canvasGo.transform.Find(LegacyPhasePanelName);
         Transform oldActionPanel = canvasGo.transform.Find(ActionMenuName);
+        if (oldTurnBar != null)
+            Object.DestroyImmediate(oldTurnBar.gameObject);
         if (oldPhasePanel != null)
             Object.DestroyImmediate(oldPhasePanel.gameObject);
         if (oldActionPanel != null)
             Object.DestroyImmediate(oldActionPanel.gameObject);
 
-        GameObject phasePanel = CreatePhasePanel(canvasGo.transform, resources);
+        GameObject phasePanel = CreateTurnBar(canvasGo.transform, resources);
         GameObject actionPanel = CreateActionPanel(canvasGo.transform, resources);
         RectTransform topHud = EnsureTopHud(canvasGo.GetComponent<Canvas>());
+        CharacterMenu characterMenu = EnsureCharacterMenu(canvasGo.GetComponent<Canvas>());
 
         MatchPhaseHud phaseHud = phasePanel.GetComponent<MatchPhaseHud>();
         UnitActionMenu actionMenu = actionPanel.GetComponent<UnitActionMenu>();
-        SpawnHud spawnHud = Object.FindAnyObjectByType<SpawnHud>();
         WirePhase(phaseHud, phasePanel);
         WireAction(actionMenu, actionPanel);
+        EnsureCharacterInspect();
         WireLayout(
             canvasGo,
             phasePanel.GetComponent<RectTransform>(),
             actionPanel.GetComponent<RectTransform>(),
-            topHud);
+            topHud,
+            characterMenu != null ? characterMenu.Rect : null);
+        EnsureMatchView();
 
         if (oldPhase != null && oldPhase.gameObject != phasePanel)
             Object.DestroyImmediate(oldPhase.gameObject);
@@ -99,12 +113,12 @@ public static class MatchHudSceneSetup
             SerializedObject so = new SerializedObject(match);
             so.FindProperty("phaseHud").objectReferenceValue = phaseHud;
             so.FindProperty("actionMenu").objectReferenceValue = actionMenu;
-            so.FindProperty("spawnHud").objectReferenceValue = spawnHud;
+            so.FindProperty("characterMenu").objectReferenceValue = characterMenu;
             so.ApplyModifiedProperties();
         }
 
         EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
-        Debug.Log("Match HUD is in the scene. Edit Canvas / PhasePanel / ActionMenu, then save.");
+        Debug.Log("Match HUD is in the scene. Edit Canvas / TurnBar / ActionMenu, then save.");
     }
 
     static void EnsureEventSystem()
@@ -136,49 +150,32 @@ public static class MatchHudSceneSetup
         return canvasGo;
     }
 
-    static GameObject CreatePhasePanel(Transform parent, DefaultControls.Resources resources)
+    static GameObject CreateTurnBar(Transform parent, DefaultControls.Resources resources)
     {
         GameObject panel = DefaultControls.CreatePanel(resources);
-        panel.name = PhasePanelName;
+        panel.name = TurnBarName;
         panel.layer = 5;
         panel.transform.SetParent(parent, false);
         RectTransform rect = panel.GetComponent<RectTransform>();
         rect.anchorMin = new Vector2(0.5f, 0.5f);
         rect.anchorMax = new Vector2(0.5f, 0.5f);
         rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.sizeDelta = new Vector2(420f, 520f);
+        rect.sizeDelta = new Vector2(280f, 48f);
+        rect.localScale = new Vector3(0.01f, 0.01f, 1f);
 
-        VerticalLayoutGroup layout = panel.AddComponent<VerticalLayoutGroup>();
-        layout.padding = new RectOffset(12, 12, 12, 12);
+        HorizontalLayoutGroup layout = panel.AddComponent<HorizontalLayoutGroup>();
+        layout.padding = new RectOffset(8, 8, 8, 8);
         layout.spacing = 8;
-        layout.childAlignment = TextAnchor.UpperLeft;
+        layout.childAlignment = TextAnchor.MiddleCenter;
         layout.childControlWidth = true;
         layout.childControlHeight = true;
         layout.childForceExpandWidth = true;
-        layout.childForceExpandHeight = false;
+        layout.childForceExpandHeight = true;
 
-        GameObject banner = DefaultControls.CreateImage(resources);
-        banner.name = "PhaseBanner";
-        banner.transform.SetParent(panel.transform, false);
-        banner.AddComponent<LayoutElement>().preferredHeight = 72f;
-        VerticalLayoutGroup bannerLayout = banner.AddComponent<VerticalLayoutGroup>();
-        bannerLayout.padding = new RectOffset(8, 8, 8, 8);
-        bannerLayout.spacing = 2;
-        bannerLayout.childControlWidth = true;
-        bannerLayout.childControlHeight = true;
-        bannerLayout.childForceExpandWidth = true;
-        bannerLayout.childForceExpandHeight = false;
-
-        CreateText(banner.transform, "PhaseTitle", "PLAN PHASE", true, 24f, resources);
-        CreateText(banner.transform, "PhaseSubtitle", "Set orders. Units do not move yet.", false, 20f, resources);
-        CreateText(panel.transform, "MatchInfo", "MATCH", false, 28f, resources);
-        CreateText(panel.transform, "TurnHelp", "Turn 1", false, 80f, resources);
-        CreateText(panel.transform, "UnitList", "Units", false, 80f, resources);
-        CreateButton(panel.transform, "ReadyButton", "Ready", new Color(0.22f, 0.62f, 0.38f, 1f), resources);
-        CreateButton(panel.transform, "NextTurnButton", "Next Turn", new Color(0.85f, 0.42f, 0.22f, 1f), resources);
+        CreateResultLabel(panel.transform, resources);
 
         panel.AddComponent<MatchPhaseHud>();
-        Undo.RegisterCreatedObjectUndo(panel, "Create PhasePanel");
+        Undo.RegisterCreatedObjectUndo(panel, "Create TurnBar");
         return panel;
     }
 
@@ -252,6 +249,26 @@ public static class MatchHudSceneSetup
         return label;
     }
 
+    static void CreateResultLabel(Transform parent, DefaultControls.Resources resources)
+    {
+        GameObject textGo = DefaultControls.CreateText(resources);
+        textGo.name = "ResultLabel";
+        textGo.layer = 5;
+        textGo.transform.SetParent(parent, false);
+        textGo.SetActive(false);
+
+        Text text = textGo.GetComponent<Text>();
+        text.text = "You win";
+        text.alignment = TextAnchor.MiddleCenter;
+        text.color = Color.white;
+        text.horizontalOverflow = HorizontalWrapMode.Overflow;
+
+        LayoutElement layout = textGo.GetComponent<LayoutElement>();
+        if (layout == null)
+            layout = textGo.AddComponent<LayoutElement>();
+        layout.preferredHeight = 36f;
+    }
+
     static Button CreateButton(
         Transform parent,
         string objectName,
@@ -296,15 +313,15 @@ public static class MatchHudSceneSetup
     static void ColorHudButtons()
     {
         ColorHudButton("ReadyButton", new Color(0.22f, 0.62f, 0.38f, 1f));
-        ColorHudButton("NextTurnButton", new Color(0.85f, 0.42f, 0.22f, 1f));
         ColorHudButton("MoveButton", new Color(0.25f, 0.5f, 0.9f, 1f));
         ColorHudButton("AttackButton", new Color(0.85f, 0.25f, 0.25f, 1f));
         ColorHudButton("UtilityButton", new Color(0.28f, 0.72f, 0.48f, 1f));
         ColorHudButton("ClearButton", new Color(0.4f, 0.4f, 0.45f, 1f));
         ColorHudButton("UnspawnButton", new Color(0.55f, 0.32f, 0.22f, 1f));
+        ColorHudButton(DeckButtonName, new Color(0.16f, 0.38f, 0.44f, 0.95f), "Deck");
     }
 
-    static void ColorHudButton(string objectName, Color color)
+    static void ColorHudButton(string objectName, Color color, string label = null)
     {
         Button[] buttons = Object.FindObjectsByType<Button>(FindObjectsInactive.Include);
         for (int i = 0; i < buttons.Length; i++)
@@ -326,6 +343,8 @@ public static class MatchHudSceneSetup
             Text text = button.GetComponentInChildren<Text>();
             Undo.RecordObject(text, "Color HUD button");
             text.color = Color.white;
+            if (label != null)
+                text.text = label;
         }
     }
 
@@ -333,14 +352,12 @@ public static class MatchHudSceneSetup
     {
         SerializedObject so = new SerializedObject(hud);
         so.FindProperty("panel").objectReferenceValue = panel.GetComponent<RectTransform>();
-        so.FindProperty("banner").objectReferenceValue = panel.transform.Find("PhaseBanner").GetComponent<Image>();
-        so.FindProperty("phaseTitle").objectReferenceValue = panel.transform.Find("PhaseBanner/PhaseTitle").GetComponent<Text>();
-        so.FindProperty("phaseSubtitle").objectReferenceValue = panel.transform.Find("PhaseBanner/PhaseSubtitle").GetComponent<Text>();
-        so.FindProperty("matchInfo").objectReferenceValue = panel.transform.Find("MatchInfo").GetComponent<Text>();
-        so.FindProperty("turnHelp").objectReferenceValue = panel.transform.Find("TurnHelp").GetComponent<Text>();
-        so.FindProperty("unitList").objectReferenceValue = panel.transform.Find("UnitList").GetComponent<Text>();
-        so.FindProperty("readyButton").objectReferenceValue = panel.transform.Find("ReadyButton").GetComponent<Button>();
-        so.FindProperty("nextTurnButton").objectReferenceValue = panel.transform.Find("NextTurnButton").GetComponent<Button>();
+        Transform ready = FindReadyButton(panel.transform);
+        if (ready != null)
+            so.FindProperty("readyButton").objectReferenceValue = ready.GetComponent<Button>();
+        Transform result = panel.transform.Find("ResultLabel");
+        if (result != null)
+            so.FindProperty("resultLabel").objectReferenceValue = result.GetComponent<Text>();
         so.FindProperty("energyHud").objectReferenceValue = Object.FindAnyObjectByType<EnergyHud>();
         so.ApplyModifiedProperties();
     }
@@ -349,17 +366,17 @@ public static class MatchHudSceneSetup
     {
         SerializedObject so = new SerializedObject(menu);
         so.FindProperty("panel").objectReferenceValue = panel.GetComponent<RectTransform>();
-        so.FindProperty("selectedInfo").objectReferenceValue = panel.transform.Find("SelectedInfo").GetComponent<Text>();
-        so.FindProperty("moveButton").objectReferenceValue = panel.transform.Find("PlanButtons/MoveButton").GetComponent<Button>();
-        so.FindProperty("attackButton").objectReferenceValue = panel.transform.Find("PlanButtons/AttackButton").GetComponent<Button>();
-        Transform utility = panel.transform.Find("PlanButtons/UtilityButton");
-        if (utility != null)
-            so.FindProperty("utilityButton").objectReferenceValue = utility.GetComponent<Button>();
-        so.FindProperty("clearButton").objectReferenceValue = panel.transform.Find("PlanButtons/ClearButton").GetComponent<Button>();
-        Transform unspawn = panel.transform.Find("PlanButtons/UnspawnButton");
-        if (unspawn != null)
-            so.FindProperty("unspawnButton").objectReferenceValue = unspawn.GetComponent<Button>();
         so.ApplyModifiedProperties();
+        menu.EnsureLayout();
+    }
+
+    static void EnsureCharacterInspect()
+    {
+        UnitActionMenu menu = Object.FindAnyObjectByType<UnitActionMenu>();
+        if (menu == null || !menu.EnsureLayout())
+            return;
+        EditorUtility.SetDirty(menu);
+        EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
     }
 
     static void EnsureUtilityButton()
@@ -472,14 +489,27 @@ public static class MatchHudSceneSetup
             HorizontalLayoutGroup row = go.GetComponent<HorizontalLayoutGroup>();
             row.spacing = 8f;
             row.childAlignment = TextAnchor.MiddleCenter;
-            row.childControlWidth = false;
-            row.childControlHeight = false;
+            row.childControlWidth = true;
+            row.childControlHeight = true;
             row.childForceExpandWidth = false;
             row.childForceExpandHeight = false;
 
             ContentSizeFitter fitter = go.GetComponent<ContentSizeFitter>();
             fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
             fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            DefaultControls.Resources resources = new DefaultControls.Resources
+            {
+                background = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Background.psd")
+            };
+            Button ready = CreateButton(go.transform, "ReadyButton", "Ready", new Color(0.22f, 0.62f, 0.38f, 1f), resources);
+            RectTransform readyRect = ready.GetComponent<RectTransform>();
+            readyRect.sizeDelta = new Vector2(120f, 72f);
+            LayoutElement readyLayout = ready.GetComponent<LayoutElement>();
+            readyLayout.preferredWidth = 120f;
+            readyLayout.preferredHeight = 72f;
+            readyLayout.minWidth = 120f;
+            readyLayout.minHeight = 72f;
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
         }
 
@@ -501,31 +531,135 @@ public static class MatchHudSceneSetup
             layout.minHeight = 72f;
         }
 
-        SpawnHud spawn = Object.FindAnyObjectByType<SpawnHud>();
-        if (spawn == null)
+        EnsureDeckButton(topHud);
+        RemoveSpawnHud();
+        PlaceTopHudAboveBoard(topHud);
+        return topHud;
+    }
+
+    static Transform FindReadyButton(Transform panel)
+    {
+        Transform ready = panel.Find("ReadyButton");
+        if (ready != null)
+            return ready;
+        Transform canvas = panel.parent;
+        if (canvas == null)
+            return null;
+        return canvas.Find($"{TopHudName}/ReadyButton");
+    }
+
+    static Button EnsureDeckButton(RectTransform topHud)
+    {
+        Transform existing = topHud.Find(DeckButtonName);
+        if (existing == null)
         {
-            spawn = SpawnHud.CreateInCanvas(topHud);
-            Undo.RegisterCreatedObjectUndo(spawn.gameObject, "Create SpawnHud");
-            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
-        }
-        else if (spawn.transform.parent != topHud)
-        {
-            Undo.SetTransformParent(spawn.transform, topHud, "Parent SpawnHud");
-            spawn.transform.localScale = Vector3.one;
+            Transform leftover = topHud.Find(SpawnHud.ObjectName);
+            if (leftover != null)
+            {
+                Undo.RecordObject(leftover.gameObject, "Rename DeckButton");
+                leftover.name = DeckButtonName;
+                existing = leftover;
+            }
         }
 
-        spawn.transform.SetSiblingIndex(1);
+        if (existing == null)
+        {
+            DefaultControls.Resources resources = new DefaultControls.Resources
+            {
+                background = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Background.psd")
+            };
+            Button created = CreateButton(topHud, DeckButtonName, "Deck", new Color(0.16f, 0.38f, 0.44f, 0.95f), resources);
+            existing = created.transform;
+            Undo.RegisterCreatedObjectUndo(created.gameObject, "Create DeckButton");
+            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+        }
+
+        SpawnHud spawn = existing.GetComponent<SpawnHud>();
+        if (spawn != null)
+            Undo.DestroyObjectImmediate(spawn);
+
+        RectTransform rect = existing.GetComponent<RectTransform>();
+        Undo.RecordObject(rect, "Size DeckButton");
+        rect.sizeDelta = new Vector2(120f, 72f);
+        existing.localScale = Vector3.one;
+
+        LayoutElement layout = existing.GetComponent<LayoutElement>();
+        if (layout == null)
+            layout = Undo.AddComponent<LayoutElement>(existing.gameObject);
+        Undo.RecordObject(layout, "Size DeckButton");
+        layout.preferredWidth = 120f;
+        layout.preferredHeight = 72f;
+        layout.minWidth = 120f;
+        layout.minHeight = 72f;
+
+        Text label = existing.GetComponentInChildren<Text>();
+        if (label != null)
+        {
+            Undo.RecordObject(label, "Label DeckButton");
+            label.text = "Deck";
+            label.alignment = TextAnchor.MiddleCenter;
+            label.color = Color.white;
+        }
+
+        Button button = existing.GetComponent<Button>();
+        if (button == null)
+            button = Undo.AddComponent<Button>(existing.gameObject);
+        Image image = existing.GetComponent<Image>();
+        if (image != null)
+        {
+            Undo.RecordObject(image, "Color DeckButton");
+            image.color = new Color(0.16f, 0.38f, 0.44f, 0.95f);
+            button.targetGraphic = image;
+        }
+
+        return button;
+    }
+
+    static CharacterMenu EnsureCharacterMenu(Canvas canvas)
+    {
+        CharacterMenu menu = Object.FindAnyObjectByType<CharacterMenu>(FindObjectsInactive.Include);
+        if (menu == null)
+        {
+            menu = CharacterMenu.CreateInCanvas(canvas.transform);
+            Undo.RegisterCreatedObjectUndo(menu.gameObject, "Create CharacterMenu");
+            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+        }
+        else if (menu.transform.parent != canvas.transform)
+        {
+            Undo.SetTransformParent(menu.transform, canvas.transform, "Parent CharacterMenu");
+        }
+
+        Transform topHud = canvas.transform.Find(TopHudName);
+        Button deck = topHud != null ? EnsureDeckButton(topHud.GetComponent<RectTransform>()) : null;
+        if (deck != null)
+        {
+            SerializedObject menuSo = new SerializedObject(menu);
+            menuSo.FindProperty("toggleButton").objectReferenceValue = deck;
+            menuSo.ApplyModifiedProperties();
+            menu.BindToggle(deck);
+        }
+
+        menu.SetOpen(false);
+        RemoveSpawnHud();
 
         MatchController match = Object.FindAnyObjectByType<MatchController>();
         if (match != null)
         {
             SerializedObject so = new SerializedObject(match);
-            so.FindProperty("spawnHud").objectReferenceValue = spawn;
+            so.FindProperty("characterMenu").objectReferenceValue = menu;
             so.ApplyModifiedProperties();
         }
 
-        PlaceTopHudAboveBoard(topHud);
-        return topHud;
+        return menu;
+    }
+
+    static void RemoveSpawnHud()
+    {
+        SpawnHud spawn = Object.FindAnyObjectByType<SpawnHud>();
+        if (spawn == null)
+            return;
+        Undo.DestroyObjectImmediate(spawn.gameObject);
+        EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
     }
 
     static void PlaceTopHudAboveBoard(RectTransform topHud)
@@ -534,28 +668,119 @@ public static class MatchHudSceneSetup
         if (board == null || topHud == null)
             return;
         Vector2 boardSize = board.WorldSize;
-        Vector3 center = board.transform.position;
         Vector2 topSize = new Vector2(3.48f, 0.72f);
-        topHud.position = center + new Vector3(0f, boardSize.y * 0.5f + topSize.y * 0.5f + 0.08f, 0f);
+        topHud.localPosition = new Vector3(0f, boardSize.y * 0.5f + topSize.y * 0.5f + 0.08f, 0f);
+    }
+
+    static Transform FindTurnBar(Transform canvas)
+    {
+        Transform turn = canvas.Find(TurnBarName);
+        if (turn != null)
+            return turn;
+        return canvas.Find(LegacyPhasePanelName);
+    }
+
+    static void EnsureSlimTurnBar(Canvas canvas)
+    {
+        Transform bar = FindTurnBar(canvas.transform);
+        if (bar == null)
+            return;
+
+        if (bar.name != TurnBarName)
+        {
+            Undo.RecordObject(bar.gameObject, "Rename TurnBar");
+            bar.name = TurnBarName;
+        }
+
+        string[] leftover = { "PhaseBanner", "MatchInfo", "TurnHelp", "UnitList", "NextTurnButton" };
+        for (int i = 0; i < leftover.Length; i++)
+        {
+            Transform child = bar.Find(leftover[i]);
+            if (child != null)
+                Undo.DestroyObjectImmediate(child.gameObject);
+        }
+
+        VerticalLayoutGroup vertical = bar.GetComponent<VerticalLayoutGroup>();
+        if (vertical != null)
+            Undo.DestroyObjectImmediate(vertical);
+
+        HorizontalLayoutGroup row = bar.GetComponent<HorizontalLayoutGroup>();
+        if (row == null)
+            row = Undo.AddComponent<HorizontalLayoutGroup>(bar.gameObject);
+        Undo.RecordObject(row, "Size TurnBar");
+        row.padding = new RectOffset(8, 8, 8, 8);
+        row.spacing = 8;
+        row.childAlignment = TextAnchor.MiddleCenter;
+        row.childControlWidth = true;
+        row.childControlHeight = true;
+        row.childForceExpandWidth = true;
+        row.childForceExpandHeight = true;
+
+        RectTransform rect = bar.GetComponent<RectTransform>();
+        Undo.RecordObject(rect, "Size TurnBar");
+        rect.sizeDelta = new Vector2(280f, 48f);
+        rect.localScale = new Vector3(0.01f, 0.01f, 1f);
+
+        DefaultControls.Resources resources = new DefaultControls.Resources
+        {
+            standard = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd"),
+            background = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Background.psd")
+        };
+        if (bar.Find("ResultLabel") == null)
+            CreateResultLabel(bar, resources);
+
+        MatchPhaseHud hud = bar.GetComponent<MatchPhaseHud>();
+        if (hud != null)
+            WirePhase(hud, bar.gameObject);
+
+        DestroyLeftoverInfoWidgets();
+        EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+    }
+
+    static void DestroyLeftoverInfoWidgets()
+    {
+        string[] names = { "PhaseBanner", "MatchInfo", "TurnHelp", "UnitList", "PhaseTitle", "PhaseSubtitle" };
+        GameObject[] objects = Resources.FindObjectsOfTypeAll<GameObject>();
+        for (int i = 0; i < objects.Length; i++)
+        {
+            GameObject go = objects[i];
+            if (go == null || EditorUtility.IsPersistent(go))
+                continue;
+            bool match = false;
+            for (int n = 0; n < names.Length; n++)
+            {
+                if (go.name == names[n])
+                {
+                    match = true;
+                    break;
+                }
+            }
+            if (!match)
+                continue;
+            Undo.DestroyObjectImmediate(go);
+        }
     }
 
     static void EnsureLayoutOn(GameObject canvasGo)
     {
-        Transform phase = canvasGo.transform.Find(PhasePanelName);
+        Transform phase = FindTurnBar(canvasGo.transform);
         Transform action = canvasGo.transform.Find(ActionMenuName);
         Transform top = canvasGo.transform.Find(TopHudName);
+        CharacterMenu menu = Object.FindAnyObjectByType<CharacterMenu>(FindObjectsInactive.Include);
         WireLayout(
             canvasGo,
             phase != null ? phase.GetComponent<RectTransform>() : null,
             action != null ? action.GetComponent<RectTransform>() : null,
-            top != null ? top.GetComponent<RectTransform>() : null);
+            top != null ? top.GetComponent<RectTransform>() : null,
+            menu != null ? menu.Rect : null);
     }
 
     static void WireLayout(
         GameObject canvasGo,
         RectTransform phasePanel,
         RectTransform actionPanel,
-        RectTransform topHud)
+        RectTransform topHud,
+        RectTransform characterMenu)
     {
         MatchHudLayout layout = canvasGo.GetComponent<MatchHudLayout>();
         bool created = layout == null;
@@ -567,9 +792,73 @@ public static class MatchHudSceneSetup
         so.FindProperty("phasePanel").objectReferenceValue = phasePanel;
         so.FindProperty("actionPanel").objectReferenceValue = actionPanel;
         so.FindProperty("topHud").objectReferenceValue = topHud;
+        so.FindProperty("characterMenu").objectReferenceValue = characterMenu;
         so.ApplyModifiedProperties();
         layout.Apply();
         if (created)
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+    }
+
+    static void EnsureMatchView()
+    {
+        PlaceholderBoard board = Object.FindAnyObjectByType<PlaceholderBoard>();
+        MatchController match = Object.FindAnyObjectByType<MatchController>();
+        Canvas canvas = Object.FindAnyObjectByType<Canvas>();
+        if (board == null || match == null || canvas == null)
+            return;
+
+        Transform root = FindMatchView();
+        if (root == null)
+        {
+            var go = new GameObject(MatchViewName);
+            Undo.RegisterCreatedObjectUndo(go, "Create MatchView");
+            root = go.transform;
+            go.AddComponent<MatchViewFit>();
+            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+        }
+
+        MatchViewFit fit = root.GetComponent<MatchViewFit>();
+        if (fit == null)
+            fit = Undo.AddComponent<MatchViewFit>(root.gameObject);
+
+        SerializedObject so = new SerializedObject(fit);
+        SerializedProperty cameraProp = so.FindProperty("targetCamera");
+        if (cameraProp != null && cameraProp.objectReferenceValue == null)
+        {
+            cameraProp.objectReferenceValue = Camera.main;
+            so.ApplyModifiedProperties();
+        }
+
+        ParentUnderMatchView(board.transform, root);
+        ParentUnderMatchView(match.transform, root);
+        ParentUnderMatchView(canvas.transform, root);
+        fit.Apply();
+    }
+
+    static Transform FindMatchView()
+    {
+        MatchViewFit existing = Object.FindAnyObjectByType<MatchViewFit>();
+        if (existing != null)
+            return existing.transform;
+
+        Canvas canvas = Object.FindAnyObjectByType<Canvas>();
+        if (canvas != null && canvas.transform.parent != null && canvas.transform.parent.name == MatchViewName)
+            return canvas.transform.parent;
+
+        return null;
+    }
+
+    static void ParentUnderMatchView(Transform child, Transform root)
+    {
+        if (child == null || child.parent == root)
+            return;
+
+        Undo.SetTransformParent(child, root, "Parent MatchView");
+        child.localPosition = Vector3.zero;
+        child.localRotation = Quaternion.identity;
+        if (Mathf.Abs(child.localScale.x - 1f) < 0.0001f
+            && Mathf.Abs(child.localScale.y - 1f) < 0.0001f)
+            child.localScale = Vector3.one;
+        EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
     }
 }

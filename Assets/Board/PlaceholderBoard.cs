@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Serialization;
 
@@ -20,9 +21,13 @@ public class PlaceholderBoard : MonoBehaviour
     [SerializeField] float minOpacity = 0.4f;
     [FormerlySerializedAs("C")]
     [SerializeField] float factor = 1f;
+    [SerializeField] float maxWarmth = 1f;
+    [SerializeField] float minWarmth = 0.1f;
+    [SerializeField] Flag flagPrefab;
 
     Sprite _cellSprite;
     BoardCell[,] _cells;
+    bool _farRowAtBottom;
 
     public float CellSize => cellSize;
     public int Columns => columns;
@@ -42,7 +47,22 @@ public class PlaceholderBoard : MonoBehaviour
 
     void OnEnable()
     {
+        if (!Application.isPlaying)
+            _farRowAtBottom = false;
         Rebuild();
+    }
+
+    /// <summary>
+    /// Draws the far row at the bottom of the screen. Columns stay left to right.
+    /// Logical cells are unchanged; only where each cell sits.
+    /// </summary>
+    public void ShowFarRowAtBottom(bool enabled)
+    {
+        if (_farRowAtBottom == enabled && _cells != null)
+            return;
+        _farRowAtBottom = enabled;
+        if (isActiveAndEnabled)
+            Rebuild();
     }
 
     void OnDisable()
@@ -58,6 +78,8 @@ public class PlaceholderBoard : MonoBehaviour
         gap = Mathf.Max(0f, gap);
         maxOpacity = Mathf.Clamp01(maxOpacity);
         minOpacity = Mathf.Clamp01(minOpacity);
+        maxWarmth = Mathf.Clamp01(maxWarmth);
+        minWarmth = Mathf.Clamp01(minWarmth);
         RefreshAttackOverlays();
     }
 
@@ -78,10 +100,11 @@ public class PlaceholderBoard : MonoBehaviour
         {
             for (int x = 0; x < columns; x++)
             {
+                int visualRow = _farRowAtBottom ? rows - 1 - y : y;
                 var go = new GameObject($"Cell {x},{y}");
                 go.hideFlags = HideFlags.DontSave;
                 go.transform.SetParent(transform, false);
-                go.transform.localPosition = new Vector3(originX + x * step, originY + y * step, 0f);
+                go.transform.localPosition = new Vector3(originX + x * step, originY + visualRow * step, 0f);
                 go.transform.localScale = new Vector3(cellSize, cellSize, 1f);
 
                 var sr = go.AddComponent<SpriteRenderer>();
@@ -93,6 +116,7 @@ public class PlaceholderBoard : MonoBehaviour
                 var cell = go.AddComponent<BoardCell>();
                 cell.Setup(new Position(x, y), tile, this);
                 _cells[x, y] = cell;
+                PlaceCornerFlag(cell);
             }
         }
     }
@@ -142,15 +166,29 @@ public class PlaceholderBoard : MonoBehaviour
     /// </summary>
     public float AttackOverlayAlpha(int damage)
     {
-        float lo = Mathf.Min(minOpacity, maxOpacity);
-        float hi = Mathf.Max(minOpacity, maxOpacity);
+        return OverlayCurve(damage, minOpacity, maxOpacity);
+    }
+
+    /// <summary>
+    /// Overlay warmth uses the same curve as opacity, then clamped to [MinWarmth, MaxWarmth].
+    /// 0 is cool, 1 is warm.
+    /// </summary>
+    public float AttackOverlayWarmth(int damage)
+    {
+        return OverlayCurve(damage, minWarmth, maxWarmth);
+    }
+
+    float OverlayCurve(int damage, float min, float max)
+    {
+        float lo = Mathf.Min(min, max);
+        float hi = Mathf.Max(min, max);
 
         if (damage < 1)
             return 0f;
 
         float t = 2f * Mathf.Atan(factor * damage) / Mathf.PI;
-        float opacity = minOpacity + (maxOpacity - minOpacity) * t;
-        return Mathf.Clamp(opacity, lo, hi);
+        float value = min + (max - min) * t;
+        return Mathf.Clamp(value, lo, hi);
     }
 
     void RefreshAttackOverlays()
@@ -165,6 +203,57 @@ public class PlaceholderBoard : MonoBehaviour
                     _cells[x, y].RefreshAttackOverlay();
             }
         }
+    }
+
+    public Flag GetFlag(int column, int row)
+    {
+        BoardCell cell = GetCell(column, row);
+        return cell != null ? cell.GetComponentInChildren<Flag>(true) : null;
+    }
+
+    public void CollectFlags(List<Flag> into)
+    {
+        into.Clear();
+        if (_cells == null)
+            return;
+        for (int y = 0; y < rows; y++)
+        {
+            for (int x = 0; x < columns; x++)
+            {
+                Flag flag = GetFlag(x, y);
+                if (flag != null)
+                    into.Add(flag);
+            }
+        }
+    }
+
+    /// <summary>Gives the home-row corners to one player and the far-row corners to the other.</summary>
+    public void AssignFlagOwners(string homeOwner, string awayOwner, int homeRow, string localPlayerId)
+    {
+        var flags = new List<Flag>();
+        CollectFlags(flags);
+        for (int i = 0; i < flags.Count; i++)
+        {
+            Flag flag = flags[i];
+            string owner = flag.Row == homeRow ? homeOwner : awayOwner;
+            flag.SetOwner(owner, Flag.ForPlayer(owner, localPlayerId));
+        }
+    }
+
+    void PlaceCornerFlag(BoardCell cell)
+    {
+        if (flagPrefab == null || cell == null || cell.Position == null)
+            return;
+        int column = cell.Position.Column;
+        int row = cell.Position.Row;
+        bool corner = (column == 0 || column == columns - 1) && (row == 0 || row == rows - 1);
+        if (!corner)
+            return;
+
+        Flag flag = Instantiate(flagPrefab, cell.transform);
+        flag.gameObject.hideFlags = HideFlags.DontSave;
+        flag.name = "Flag";
+        flag.Bind(column, row);
     }
 
     public void ClearMarks()

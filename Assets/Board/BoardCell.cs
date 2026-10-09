@@ -2,14 +2,15 @@ using UnityEngine;
 
 /// <summary>
 /// Highlight drawn on a board cell during plan phase.
-/// Move is blue. Attack uses a transparent overlay whose opacity follows combined damage.
+/// Move is blue. Attack uses a transparent overlay whose opacity and warmth follow combined damage.
 /// Utility uses a placeholder sparkle overlay. Tiles do not scale.
 /// </summary>
 public enum CellMark
 {
     None,
     Selected,
-    Move
+    Move,
+    Spawn
 }
 
 /// <summary>
@@ -21,7 +22,8 @@ public class BoardCell : MonoBehaviour
     const int OverlaySortingOrder = 1;
     const int BlockedMarkSortingOrder = 3;
 
-    static readonly Color AttackOverlayColor = new Color(0.88f, 0.22f, 0.22f, 1f);
+    static readonly Color AttackOverlayCool = new Color(0.55f, 0.16f, 0.62f, 1f);
+    static readonly Color AttackOverlayWarm = new Color(1f, 0.48f, 0.08f, 1f);
     static readonly Color UtilityOverlayColor = new Color(1f, 1f, 1f, 1f);
     static readonly Color BlockedMarkColor = new Color(0.12f, 0.04f, 0.04f, 0.95f);
     static readonly int SparkleSeedId = Shader.PropertyToID("_Seed");
@@ -32,6 +34,8 @@ public class BoardCell : MonoBehaviour
 
     /// <summary>Unit standing on this cell, or null if empty.</summary>
     public Unit Occupant;
+
+    public bool HasFlag => GetComponentInChildren<Flag>(true) != null;
 
     SpriteRenderer _renderer;
     SpriteRenderer _attackOverlay;
@@ -123,6 +127,9 @@ public class BoardCell : MonoBehaviour
             case CellMark.Move:
                 _renderer.color = new Color(0.35f, 0.55f, 0.95f, 1f);
                 break;
+            case CellMark.Spawn:
+                _renderer.color = new Color(0.95f, 0.85f, 0.25f, 1f);
+                break;
             default:
                 _renderer.color = _baseColor;
                 break;
@@ -131,57 +138,43 @@ public class BoardCell : MonoBehaviour
 
     void EnsureOverlay()
     {
-        if (_attackOverlay != null)
-            return;
-
-        var go = new GameObject("AttackOverlay");
-        go.hideFlags = HideFlags.DontSave;
-        go.transform.SetParent(transform, false);
-        go.transform.localPosition = Vector3.zero;
-        go.transform.localScale = Vector3.one;
-
-        _attackOverlay = go.AddComponent<SpriteRenderer>();
-        _attackOverlay.sprite = _renderer != null ? _renderer.sprite : PlaceholderSprite.WhiteSquare();
-        _attackOverlay.sharedMaterial = OverlayMaterial();
-        _attackOverlay.sortingOrder = OverlaySortingOrder;
-        _attackOverlay.enabled = false;
+        _attackOverlay = EnsureMark(_attackOverlay, "AttackOverlay", SquareSprite(), OverlayMaterial(), OverlaySortingOrder, Vector3.one);
     }
 
     void EnsureUtilityOverlay()
     {
-        if (_utilityOverlay != null)
-            return;
-
-        var go = new GameObject("UtilityOverlay");
-        go.hideFlags = HideFlags.DontSave;
-        go.transform.SetParent(transform, false);
-        go.transform.localPosition = Vector3.zero;
-        go.transform.localScale = Vector3.one;
-
-        _utilityOverlay = go.AddComponent<SpriteRenderer>();
-        _utilityOverlay.sprite = _renderer != null ? _renderer.sprite : PlaceholderSprite.WhiteSquare();
-        _utilityOverlay.sharedMaterial = SparkleMaterial();
-        _utilityOverlay.sortingOrder = OverlaySortingOrder;
-        _utilityOverlay.enabled = false;
+        _utilityOverlay = EnsureMark(_utilityOverlay, "UtilityOverlay", SquareSprite(), SparkleMaterial(), OverlaySortingOrder, Vector3.one);
     }
 
     void EnsureBlockedMark()
     {
+        _blockedMark = EnsureMark(_blockedMark, "BlockedAttackMark", PlaceholderSprite.Cross(), OverlayMaterial(), BlockedMarkSortingOrder, new Vector3(0.72f, 0.72f, 1f));
         if (_blockedMark != null)
-            return;
+            _blockedMark.color = BlockedMarkColor;
+    }
 
-        var go = new GameObject("BlockedAttackMark");
+    Sprite SquareSprite()
+    {
+        return _renderer != null ? _renderer.sprite : PlaceholderSprite.WhiteSquare();
+    }
+
+    SpriteRenderer EnsureMark(SpriteRenderer mark, string name, Sprite sprite, Material material, int sortingOrder, Vector3 scale)
+    {
+        if (mark != null)
+            return mark;
+
+        var go = new GameObject(name);
         go.hideFlags = HideFlags.DontSave;
         go.transform.SetParent(transform, false);
         go.transform.localPosition = Vector3.zero;
-        go.transform.localScale = new Vector3(0.72f, 0.72f, 1f);
+        go.transform.localScale = scale;
 
-        _blockedMark = go.AddComponent<SpriteRenderer>();
-        _blockedMark.sprite = PlaceholderSprite.Cross();
-        _blockedMark.sharedMaterial = OverlayMaterial();
-        _blockedMark.sortingOrder = BlockedMarkSortingOrder;
-        _blockedMark.color = BlockedMarkColor;
-        _blockedMark.enabled = false;
+        mark = go.AddComponent<SpriteRenderer>();
+        mark.sprite = sprite;
+        mark.sharedMaterial = material;
+        mark.sortingOrder = sortingOrder;
+        mark.enabled = false;
+        return mark;
     }
 
     void ApplyBlockedMark()
@@ -203,7 +196,8 @@ public class BoardCell : MonoBehaviour
             return;
         }
 
-        Color color = AttackOverlayColor;
+        float warmth = _board != null ? _board.AttackOverlayWarmth(_attackDamage) : 0f;
+        Color color = Color.Lerp(AttackOverlayCool, AttackOverlayWarm, warmth);
         color.a = alpha;
         _attackOverlay.color = color;
         _attackOverlay.enabled = true;

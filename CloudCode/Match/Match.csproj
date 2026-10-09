@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <RootNamespace>Match</RootNamespace>
+    <AssemblyName>Match</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Com.Unity.Services.CloudCode.Core" Version="0.0.4" />
+    <PackageReference Include="Com.Unity.Services.CloudCode.Apis" Version="0.0.26" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\Assets\Characters\UnitConstants.cs" Link="Shared\UnitConstants.cs" />
+    <Compile Include="..\..\Assets\Characters\AbilitySubject.cs" Link="Shared\AbilitySubject.cs" />
+    <Compile Include="..\..\Assets\Characters\UtilityAbility.cs" Link="Shared\UtilityAbility.cs" />
+    <Compile Include="..\..\Assets\Characters\MovementPattern.cs" Link="Shared\MovementPattern.cs" />
+    <Compile Include="..\..\Assets\Characters\AttackPattern.cs" Link="Shared\AttackPattern.cs" />
+    <Compile Include="..\..\Assets\Utils\Position.cs" Link="Shared\Position.cs" />
+  </ItemGroup>
+</Project>

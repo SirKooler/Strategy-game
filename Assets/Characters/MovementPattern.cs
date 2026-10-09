@@ -57,6 +57,49 @@ public class MovementPattern
         return Build(range, includeCenter, (column, row) => Math.Abs(column) == Math.Abs(row));
     }
 
+    /// <summary>
+    /// Builds a square pattern from a bool grid. Row 0 is the top. The middle cell is the stand tile.
+    /// Missing cells are uncovered. The grid is padded to an odd square so it has a single center.
+    /// </summary>
+    public static MovementPattern FromGrid(bool[][] source)
+    {
+        if (source == null || source.Length == 0)
+            return Empty();
+
+        int height = source.Length;
+        int width = 0;
+        for (int row = 0; row < height; row++)
+        {
+            if (source[row] != null && source[row].Length > width)
+                width = source[row].Length;
+        }
+
+        if (width <= 0)
+            return Empty();
+
+        int side = Math.Max(height, width);
+        if ((side & 1) == 0)
+            side++;
+
+        int rowOffset = (side - height) / 2;
+        int colOffset = (side - width) / 2;
+        var cells = new bool[side * side];
+        for (int row = 0; row < height; row++)
+        {
+            bool[] line = source[row];
+            if (line == null)
+                continue;
+            for (int col = 0; col < line.Length; col++)
+            {
+                if (!line[col])
+                    continue;
+                cells[(row + rowOffset) * side + (col + colOffset)] = true;
+            }
+        }
+
+        return new MovementPattern(cells);
+    }
+
     public bool Includes(int row, int column)
     {
         if (!HasCells || row < 0 || column < 0 || row >= size || column >= size)

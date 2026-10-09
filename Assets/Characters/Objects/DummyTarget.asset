@@ -13,7 +13,3 @@ MonoBehaviour:
   m_Name: DummyTarget
   m_EditorClassIdentifier: 
   displayName: Dummy target (placeholder)
-  maxHealth: 16
-  health: 16
-  damage: 0
-  placeholderColor: {r: 0.72, g: 0.32, b: 0.28, a: 1}

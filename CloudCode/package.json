@@ -1,0 +1,16 @@
+{
+  "name": "cloudcode",
+  "version": "1.0.0",
+  "description": "Server-authoritative match module for the Unity client in `Strategy game`. Deploy this to the **same Unity Cloud project** as the game (`53b1b523-2eb6-4460-98c1-c02cd97d7d3d`).",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "ugs": "^1.9.0"
+  }
+}

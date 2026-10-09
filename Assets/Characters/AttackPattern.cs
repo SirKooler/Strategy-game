@@ -83,6 +83,17 @@ public class AttackPattern
         return true;
     }
 
+    /// <summary>First identifier on this tile, when the tile is covered.</summary>
+    public bool TryGetFirstIdentifier(int row, int column, out byte identifier)
+    {
+        identifier = 0;
+        AttackPatternCell cell = CellAt(row, column);
+        if (cell == null || cell.Count == 0 || cell.identifiers == null)
+            return false;
+        identifier = cell.identifiers[0];
+        return true;
+    }
+
     /// <summary>True when <see cref="hasSingleAttack"/> and the shared identifier is found.</summary>
     public bool TryGetSingleIdentifier(out byte identifier)
     {
@@ -162,25 +173,13 @@ public class AttackPattern
     /// <summary>Orthogonal arms. Range 1 is the four adjacent tiles.</summary>
     public static AttackPattern Plus(int range, bool coverAllDirections = false)
     {
-        return GenerateFromDirections(range, new[]
-        {
-            new[] { 0, 1 },
-            new[] { 1, 0 },
-            new[] { 0, -1 },
-            new[] { -1, 0 },
-        }, coverAllDirections);
+        return GenerateFromDirections(range, new[] { new[] { 0, 1 }, new[] { 1, 0 }, new[] { 0, -1 }, new[] { -1, 0 } }, coverAllDirections);
     }
 
     /// <summary>Diagonal arms. Range 1 is the four corners.</summary>
     public static AttackPattern X(int range, bool coverAllDirections = false)
     {
-        return GenerateFromDirections(range, new[]
-        {
-            new[] { 1, 1 },
-            new[] { 1, -1 },
-            new[] { -1, 1 },
-            new[] { -1, -1 },
-        }, coverAllDirections);
+        return GenerateFromDirections(range, new[] { new[] { 1, 1 }, new[] { 1, -1 }, new[] { -1, 1 }, new[] { -1, -1 } }, coverAllDirections);
     }
 
     /// <summary>Eight arms (plus and X). Range 1 is every neighbor.</summary>
@@ -188,14 +187,8 @@ public class AttackPattern
     {
         return GenerateFromDirections(range, new[]
         {
-            new[] { 0, 1 },
-            new[] { 1, 0 },
-            new[] { 0, -1 },
-            new[] { -1, 0 },
-            new[] { 1, 1 },
-            new[] { 1, -1 },
-            new[] { -1, 1 },
-            new[] { -1, -1 },
+            new[] { 0, 1 }, new[] { 1, 0 }, new[] { 0, -1 }, new[] { -1, 0 },
+            new[] { 1, 1 }, new[] { 1, -1 }, new[] { -1, 1 }, new[] { -1, -1 }
         }, coverAllDirections);
     }
 
@@ -231,10 +224,10 @@ public class AttackPattern
     }
 
     /// <summary>
-    /// Filled square. Range 1 is the 8 neighbors. The stand cell is empty.
+    /// Filled square. Range 1 is the 8 neighbors. The stand cell is empty unless <paramref name="includeCenter"/> is set.
     /// When <paramref name="coverAllDirections"/> is false, each tile has its own identifier.
     /// </summary>
-    public static AttackPattern Square(int range, bool coverAllDirections = false)
+    public static AttackPattern Square(int range, bool coverAllDirections = false, bool includeCenter = false)
     {
         if (range < 0)
             range = 0;
@@ -246,7 +239,7 @@ public class AttackPattern
         {
             for (int col = 0; col < size; col++)
             {
-                if (row == range && col == range)
+                if (row == range && col == range && !includeCenter)
                     continue;
                 pattern.CellAt(row, col).Add(identifier);
                 if (!coverAllDirections)
